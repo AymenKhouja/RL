@@ -1,3 +1,5 @@
+
+
 from common import DuelCnnPolicy, DuelMlpPolicy, DqnCnnPolicy, DqnMlpPolicy
 from collections import deque, namedtuple
 import torch.optim as optim
@@ -21,7 +23,7 @@ class DQNAgent:
                  final_epsilon : float = 0.1, 
                  discount_factor : float = 0.95, 
                  tau : float = 0.005,
-                 memory_size : int = 1e6,
+                 buffer_size : int = 1e6,
                  device : str = "cuda", 
                  policy : str = "MLPPolicy", 
                  architecture : str = "DQN",
@@ -91,13 +93,12 @@ class DQNAgent:
                 self.target_net = DqnMlpPolicy(n_observations,n_actions).to(self.device)
                 
         self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.memory = deque([],memory_size)
+        self.memory = deque([],buffer_size)
         self.steps = 0
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr = learning_rate, amsgrad = True)
         self.loss = []
         self.architecture = architecture
         self.doubledqn = doubledqn
-                     
     def choose_action(self,state):
         eps = self.eps_end + (self.eps_start - self.eps_end) * math.exp(-1*self.steps/self.eps_decay)
         self.steps += 1
@@ -113,8 +114,8 @@ class DQNAgent:
         
     def recall(self):
         return random.sample(self.memory,self.batch_size)
-        
     def preprocess_state(self, state):
+        
         if self.policy == "CNNPolicy":
             state = torch.tensor(state.__array__(),dtype=torch.float,device = self.device).unsqueeze(0)
         else:
@@ -163,13 +164,31 @@ class DQNAgent:
         self.optimizer.zero_grad()
         loss.backward()
         self.loss.append(loss.item())
-        
         # In-place gradient clipping
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
         
-    def learn(self,n_episodes, print_every, save_every):    
+    def learn(self,n_episodes : int, verbose : int = 1, print_every : int = 10, save_every : int = None):  
+        """
+        function to train the DQN Agent
+
+        Parameters
+        ----------
+        n_episodes : int
+            The number of episodes to train the agent for.
+        verbose : int, optional
+            whether or not to print episode statistics. 1 to print episode statistics, anything different than 1 means not printing The default is 1.
+        print_every : int, optional
+            after how many episodes to print statistics. The default is 10.
+        save_every : int, optional
+            after how many episodes we save network's weights. The default is 100.
+
+        Returns
+        -------
+        None.
+
+        """
         self.rewards = []
         self.time_steps = deque(maxlen = n_episodes)
         start = time.time()
@@ -215,14 +234,16 @@ class DQNAgent:
             i = episode + 1 if episode + 1 < print_every else print_every
             self.rewards.append(total_rewards)
             self.time_steps.append(steps)
-            if (episode + 1) % print_every == 0:
-                print("-"*6)
-                print(f"Episode Steps : {steps}, Total Time Steps : {np.sum(self.time_steps)}")
-                print(f'Episode : {episode + 1}, Episode Reward : {total_rewards} Average Rewards over previous {i} episodes: {np.mean(self.rewards[episode-i:episode])}, Rewards Standard Deviation : {np.std(self.rewards)} \n')
-            
-            if episode % save_every == 0: 
-                torch.save(self.policy_net.state_dict(), f"policy_weights_{episode}")
-                torch.save(self.target_net.state_dict(),f"target_weights_{episode}")
+            if verbose == 1:
+                if (episode + 1) % print_every == 0 :
+                    print("-"*6)
+                    print(f"Episode Steps : {steps}, Total Time Steps : {np.sum(self.time_steps)}")
+                    print(f'Episode : {episode + 1}, Episode Reward : {total_rewards} Average Rewards over previous {i} episodes: {np.mean(self.rewards[episode-i:episode])}, Rewards Standard Deviation : {np.std(self.rewards)} \n')
+                
+            if save_every != None: 
+                if episode % save_every == 0 :
+                    torch.save(self.policy_net.state_dict(), f"policy_weights_{episode}")
+                    torch.save(self.target_net.state_dict(),f"target_weights_{episode}")
              
         print('Complete')
         print(f"{n_episodes} episodes complete in {(time.time() - start)//3600} hours, {(time.time() - start)%3600//60} minutes and {(time.time() - start)%60} seconds.")
