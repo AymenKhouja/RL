@@ -21,6 +21,7 @@ class DQNAgent:
                  final_epsilon : float = 0.1, 
                  discount_factor : float = 0.95, 
                  tau : float = 0.005,
+                 memory_size : int = 1e6,
                  device : str = "cuda", 
                  policy : str = "MLPPolicy", 
                  architecture : str = "DQN",
@@ -90,12 +91,13 @@ class DQNAgent:
                 self.target_net = DqnMlpPolicy(n_observations,n_actions).to(self.device)
                 
         self.target_net.load_state_dict(self.policy_net.state_dict())
-        self.memory = deque([],100000)
+        self.memory = deque([],memory_size)
         self.steps = 0
         self.optimizer = optim.AdamW(self.policy_net.parameters(), lr = learning_rate, amsgrad = True)
         self.loss = []
         self.architecture = architecture
         self.doubledqn = doubledqn
+                     
     def choose_action(self,state):
         eps = self.eps_end + (self.eps_start - self.eps_end) * math.exp(-1*self.steps/self.eps_decay)
         self.steps += 1
@@ -111,8 +113,8 @@ class DQNAgent:
         
     def recall(self):
         return random.sample(self.memory,self.batch_size)
-    def preprocess_state(self, state):
         
+    def preprocess_state(self, state):
         if self.policy == "CNNPolicy":
             state = torch.tensor(state.__array__(),dtype=torch.float,device = self.device).unsqueeze(0)
         else:
@@ -161,6 +163,7 @@ class DQNAgent:
         self.optimizer.zero_grad()
         loss.backward()
         self.loss.append(loss.item())
+        
         # In-place gradient clipping
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
